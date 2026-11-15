@@ -108,8 +108,9 @@ notification vibrates but makes no sound.
 - **Changing the app ID** (`com.sessiondial.app`): do it before the first install, in both
   `capacitor.config.ts` and `android/app/build.gradle`. Changing it afterwards makes Android treat
   it as a separate app with an empty log.
-- **App icon:** the project still has Capacitor's default icon. Android Studio's Image Asset tool
-  (right-click `res`, New, Image Asset) replaces it.
+- **App icon:** the dial ring is drawn in `android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml`,
+  on the colour in `values/ic_launcher_background.xml`. The `mipmap-*` PNGs are the same picture for
+  Android 7, which cannot use the drawn version.
 
 ## What has and has not been tested
 
