@@ -71,8 +71,10 @@ def find(pattern, timeout=60, scroll=False):
 
 def fail(message):
     shot('FAILED')
+    listing = '\n'.join('%r enabled=%s at %d,%d' % n[:4] for n in nodes())
     with open(os.path.join(OUT, 'screen-at-failure.txt'), 'w') as f:
-        f.write('\n'.join('%r enabled=%s at %d,%d' % n[:4] for n in nodes()))
+        f.write(listing)
+    print('Text on screen at failure (screen is %dx%d):\n%s' % (W, H, listing), flush=True)
     print('FAILED:', message, flush=True)
     sys.exit(1)
 
@@ -95,7 +97,7 @@ adb('shell', 'am', 'start', '-W', '-n', APP + '/.MainActivity')
 tap(r'Start session', timeout=120)
 time.sleep(6)
 shot('session-running')
-tap(r'End and log')
+tap(r'End and log', scroll=True)
 time.sleep(2)
 
 # 2. Export.

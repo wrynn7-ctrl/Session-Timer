@@ -51,6 +51,7 @@ jobs:
           api-level: 34
           target: default
           arch: x86_64
+          profile: pixel_5
           disable-animations: true
           working-directory: session-dial-android
           script: |
