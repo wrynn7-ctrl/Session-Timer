@@ -1,0 +1,23 @@
+{
+  "name": "session-dial",
+  "version": "1.0.0",
+  "description": "Session Dial: a session timer for Android with background chimes",
+  "scripts": {
+    "postinstall": "node scripts/copy-libs.js",
+    "sync": "cap sync android",
+    "build:debug": "cap sync android && cd android && ./gradlew assembleDebug",
+    "run:phone": "cap run android"
+  },
+  "dependencies": {
+    "@capacitor-community/keep-awake": "^8.0.1",
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/share": "^8.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0"
+  },
+  "private": true
+}

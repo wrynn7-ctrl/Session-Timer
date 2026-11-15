@@ -1,0 +1,1099 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Session Dial</title>
+<style>
+/* Fonts ship inside the app so it looks the same with no connection. */
+@font-face { font-family: "Instrument Serif"; font-weight: 400; font-style: normal; font-display: swap; src: url("fonts/instrument-serif-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Instrument Sans"; font-weight: 400; font-style: normal; font-display: swap; src: url("fonts/instrument-sans-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Instrument Sans"; font-weight: 500; font-style: normal; font-display: swap; src: url("fonts/instrument-sans-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Instrument Sans"; font-weight: 600; font-style: normal; font-display: swap; src: url("fonts/instrument-sans-latin-600-normal.woff2") format("woff2"); }
+
+:root {
+  color-scheme: light;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+body { margin: 0; }
+[hidden] { display: none !important; }
+
+/* Layout: one large dial owns the left; a quiet rail of length, cues and today's log sits right and stacks under the dial on phones. */
+:root {
+  --bg: #ECE9F0;
+  --surface: #F6F4F8;
+  --ink: #2B1A30;
+  --muted: #6C5E72;
+  --line: #D3CCD9;
+  --track: #DCD5E1;
+  --accent: #B5562A;
+  --accent-ink: #974219;
+  --wind: #E6C3AD;
+  --over: #93305F;
+  --btn-bg: #2B1A30;
+  --btn-fg: #F6F4F8;
+  --font-display: "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-ui: "Instrument Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17101C;
+    --surface: #211727;
+    --ink: #F0E8EE;
+    --muted: #A797AC;
+    --line: #382B40;
+    --track: #2E2236;
+    --accent: #E38D58;
+    --accent-ink: #EDA579;
+    --wind: #5A3A2C;
+    --over: #E873A6;
+    --btn-bg: #E38D58;
+    --btn-fg: #1C1110;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #17101C;
+  --surface: #211727;
+  --ink: #F0E8EE;
+  --muted: #A797AC;
+  --line: #382B40;
+  --track: #2E2236;
+  --accent: #E38D58;
+  --accent-ink: #EDA579;
+  --wind: #5A3A2C;
+  --over: #E873A6;
+  --btn-bg: #E38D58;
+  --btn-fg: #1C1110;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { min-height: 100%; }
+body {
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.45;
+  padding-block: 20px 36px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+button, input { font: inherit; color: inherit; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
+.app { max-width: 1040px; margin-inline: auto; display: grid; gap: 28px; }
+
+.top { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.brand { font-family: var(--font-display); font-size: 28px; line-height: 1; letter-spacing: 0.005em; margin: 0; font-weight: 400; }
+.now { display: flex; gap: 12px; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.now strong { color: var(--ink); font-weight: 600; }
+
+.stage { display: grid; gap: 36px; }
+@media (min-width: 880px) {
+  .stage { grid-template-columns: minmax(0, 1fr) 320px; gap: 56px; align-items: start; }
+}
+
+/* ---------- dial ---------- */
+.dial-col { display: grid; justify-items: center; gap: 24px; min-width: 0; }
+.dial {
+  position: relative;
+  width: min(100%, 520px, max(280px, 64vh));
+  max-width: 100%;
+  aspect-ratio: 1;
+  container-type: inline-size;
+}
+.dial svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.dial circle { fill: none; }
+.track { stroke: var(--track); }
+.windzone { stroke: var(--wind); }
+.prog { stroke: var(--accent); transition: stroke-dashoffset 0.25s linear; }
+.overring { stroke: var(--over); transition: stroke-dashoffset 0.25s linear; }
+.dial circle.tip { fill: var(--surface); stroke: var(--accent); stroke-width: 3; }
+.dial circle.halo { fill: var(--accent); opacity: 0; }
+.dial[data-status="running"] circle.halo { animation: halo 2.6s ease-in-out infinite; }
+@keyframes halo { 0%, 100% { opacity: 0.08; } 50% { opacity: 0.32; } }
+
+.tick { stroke: var(--muted); stroke-width: 1; opacity: 0.55; }
+.tick.major { opacity: 0.9; stroke-width: 1.25; }
+.tick.cpt { stroke: var(--accent-ink); stroke-width: 2; opacity: 1; }
+.scale-label { fill: var(--muted); font-family: var(--font-ui); font-size: 13px; font-variant-numeric: tabular-nums; }
+.scale-label.cpt { fill: var(--accent-ink); font-weight: 600; }
+.scale-label.top { fill: var(--ink); font-weight: 600; }
+.scale-label.top.cpt { fill: var(--accent-ink); }
+
+.readout {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; gap: 2.4cqi;
+  text-align: center;
+}
+.phase {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12px; font-size: clamp(11px, 2.7cqi, 13px);
+  font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--muted);
+}
+.phase::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--muted); flex: none;
+}
+.dial[data-status="running"] .phase { color: var(--ink); }
+.dial[data-status="running"] .phase::before { background: var(--accent); }
+.dial[data-status="running"][data-zone="over"] .phase::before { background: var(--over); }
+.dial[data-status="paused"] .phase::before { background: transparent; box-shadow: inset 0 0 0 2px var(--muted); }
+
+.digits {
+  font-family: var(--font-display);
+  font-size: 72px; font-size: 26cqi;
+  line-height: 0.9;
+  white-space: nowrap;
+}
+.digits.long { font-size: 60px; font-size: 21cqi; }
+.digits .d { display: inline-block; width: 0.52em; text-align: center; }
+.digits .c { display: inline-block; width: 0.26em; text-align: center; }
+.dial[data-zone="wind"] .digits { color: var(--accent-ink); }
+.dial[data-zone="over"] .digits { color: var(--over); }
+.dial[data-status="paused"] .digits { opacity: 0.55; }
+
+.sub {
+  max-width: 220px; max-width: 54cqi;
+  font-size: 13px; font-size: clamp(12px, 3.5cqi, 16px);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-wrap: balance;
+}
+
+/* ---------- controls ---------- */
+.controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.btn {
+  padding: 12px 22px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primary {
+  background: var(--btn-bg); color: var(--btn-fg); border-color: transparent;
+  min-width: 190px; padding: 14px 28px; font-size: 16px;
+}
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.ghost { border-color: transparent; color: var(--muted); }
+.btn.ghost:hover { color: var(--ink); border-color: var(--line); }
+.btn[data-armed] { color: var(--over); border-color: var(--over); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- CPT strip ---------- */
+.cpt { width: min(100%, 520px); display: grid; gap: 10px; }
+.cpt-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--muted); margin: 0;
+}
+.cpt-note { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cpt-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.cpt-steps li { border-top: 3px solid var(--track); padding-top: 8px; display: grid; gap: 1px; color: var(--muted); }
+.cpt-steps b { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cpt-steps span { font-size: 12px; }
+.cpt-steps li.reached { border-top-color: var(--muted); }
+.cpt-steps li.current { border-top-color: var(--accent); color: var(--ink); }
+.cpt-steps li.current b { color: var(--accent-ink); }
+
+/* ---------- rail ---------- */
+.rail { display: grid; gap: 24px; min-width: 0; }
+.group { display: grid; gap: 12px; }
+.group + .group { border-top: 1px solid var(--line); padding-top: 22px; }
+.group-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.chip:hover { border-color: var(--muted); }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.custom { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+.custom input {
+  width: 76px; padding: 7px 10px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.switch { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; font-size: 14px; }
+.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch .knob {
+  flex: none; position: relative; width: 40px; height: 24px; border-radius: 999px;
+  background: var(--track); border: 1px solid var(--line); transition: background 0.15s;
+}
+.switch .knob::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--surface); box-shadow: 0 0 0 1px var(--line); transition: transform 0.15s;
+}
+.switch input:checked + .knob { background: var(--ink); border-color: var(--ink); }
+.switch input:checked + .knob::after { transform: translateX(16px); box-shadow: none; }
+.switch input:focus-visible + .knob { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.log-sum { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.log-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.log-list li {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 12px;
+  padding: 9px 0; border-bottom: 1px solid var(--line);
+  font-size: 14px; font-variant-numeric: tabular-nums;
+}
+.log-list .when { color: var(--muted); min-width: 0; }
+.log-list .dur { font-weight: 600; }
+.log-list .code { color: var(--accent-ink); font-size: 13px; }
+.log-list .rm {
+  border: 0; background: transparent; color: var(--muted); cursor: pointer;
+  width: 28px; height: 28px; border-radius: 50%; font-size: 16px; line-height: 1;
+}
+.log-list .rm:hover { color: var(--over); }
+.log-empty, .fine { margin: 0; font-size: 13px; color: var(--muted); }
+.log-tools { display: flex; gap: 8px; }
+.log-tools .btn { padding: 7px 14px; font-size: 13px; }
+#copyFallback, #csvFallback {
+  width: 100%; min-height: 96px; padding: 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  font: 13px/1.4 ui-monospace, Menlo, Consolas, monospace;
+}
+.range { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.range label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); min-width: 0; }
+.range input {
+  width: 100%; min-width: 0; padding: 7px 8px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.notice { display: grid; gap: 8px; justify-items: start; }
+.notice .btn { padding: 7px 14px; font-size: 13px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .prog, .overring, .switch .knob, .switch .knob::after { transition: none; }
+  .dial[data-status="running"] circle.halo { animation: none; opacity: 0.2; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="top">
+    <h1 class="brand">Session Dial</h1>
+    <div class="now"><span id="nowDate"></span><strong id="nowTime"></strong></div>
+  </header>
+
+  <main class="stage">
+    <section class="dial-col" aria-label="Timer">
+      <div class="dial" id="dial" data-status="idle" data-zone="main">
+        <svg viewBox="0 0 400 400" aria-hidden="true" focusable="false">
+          <g transform="rotate(-90 200 200)" fill="none">
+            <circle class="track" cx="200" cy="200" r="150" stroke-width="12"></circle>
+            <circle class="windzone" id="windzone" cx="200" cy="200" r="150" stroke-width="12"></circle>
+            <circle class="prog" id="prog" cx="200" cy="200" r="150" stroke-width="12" stroke-linecap="round"></circle>
+            <circle class="overring" id="overring" cx="200" cy="200" r="132" stroke-width="4" stroke-linecap="round"></circle>
+          </g>
+          <g id="scale"></g>
+          <circle class="halo" id="halo" cx="200" cy="50" r="14"></circle>
+          <circle class="tip" id="tip" cx="200" cy="50" r="6"></circle>
+        </svg>
+        <div class="readout" id="readout" role="timer" aria-label="No time elapsed">
+          <div class="phase" id="phase">Ready</div>
+          <div class="digits" id="digits" aria-hidden="true"></div>
+          <div class="sub" id="sub"></div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button type="button" class="btn primary" id="btnMain">Start session</button>
+        <button type="button" class="btn" id="btnEnd" hidden>End and log</button>
+        <button type="button" class="btn ghost" id="btnReset" hidden>Discard</button>
+      </div>
+
+      <div class="cpt" id="cpt">
+        <div class="cpt-head">
+          <h2 class="label">CPT time range</h2>
+          <span class="cpt-note" id="cptNote"></span>
+        </div>
+        <ol class="cpt-steps" id="cptSteps">
+          <li data-min="16"><b>90832</b><span>16–37 min</span></li>
+          <li data-min="38"><b>90834</b><span>38–52 min</span></li>
+          <li data-min="53"><b>90837</b><span>53 min and up</span></li>
+        </ol>
+      </div>
+      <div class="sr-only" aria-live="polite" id="live"></div>
+    </section>
+
+    <aside class="rail" aria-label="Settings and log">
+      <section class="group">
+        <h2 class="label">Session length, minutes</h2>
+        <div class="chips" id="lenChips"></div>
+        <label class="custom" for="customMin">Other
+          <input type="number" id="customMin" min="1" max="600" step="1" inputmode="numeric">
+          min
+        </label>
+      </section>
+
+      <section class="group">
+        <h2 class="label">Wind-down starts before the end</h2>
+        <div class="chips" id="cueChips"></div>
+        <label class="switch"><span>Chime at wind-down and at the end</span><input type="checkbox" id="optChime"><span class="knob"></span></label>
+        <div class="notice" id="chimeNotice" hidden>
+          <p class="fine" id="chimeMsg"></p>
+          <button type="button" class="btn" id="btnExact" hidden>Allow exact timing</button>
+        </div>
+        <label class="switch"><span>Show CPT time range</span><input type="checkbox" id="optCpt"><span class="knob"></span></label>
+        <label class="switch"><span>Keep the screen on while timing</span><input type="checkbox" id="optAwake"><span class="knob"></span></label>
+      </section>
+
+      <section class="group">
+        <div class="group-head">
+          <h2 class="label">Today</h2>
+          <span class="log-sum" id="logSum"></span>
+        </div>
+        <p class="log-empty" id="logEmpty">Sessions you end will be listed here with their start, finish and length.</p>
+        <ul class="log-list" id="logList"></ul>
+        <div class="log-tools" id="logTools" hidden>
+          <button type="button" class="btn" id="btnCopy">Copy list</button>
+          <button type="button" class="btn ghost" id="btnClear">Clear today</button>
+        </div>
+        <textarea id="copyFallback" readonly hidden aria-label="Today's sessions as text"></textarea>
+      </section>
+
+      <section class="group">
+        <div class="group-head">
+          <h2 class="label">Export</h2>
+          <span class="log-sum" id="histSum"></span>
+        </div>
+        <div class="range">
+          <label for="expFrom">From <input type="date" id="expFrom"></label>
+          <label for="expTo">To <input type="date" id="expTo"></label>
+        </div>
+        <div class="log-tools">
+          <button type="button" class="btn" id="btnExport">Export CSV</button>
+          <button type="button" class="btn ghost" id="btnWipe" hidden>Delete all</button>
+        </div>
+        <p class="fine" id="exportMsg" aria-live="polite" hidden></p>
+        <textarea id="csvFallback" readonly hidden aria-label="Sessions as CSV text"></textarea>
+        <p class="fine">Sessions are kept on this device only. Times and lengths are saved, never names.</p>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<script src="capacitor.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const LS_STATE = 'session-dial:state:v1';
+  const LS_LOG = 'session-dial:log:v1';
+  const store = {
+    get(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  };
+
+  /* Inside the Android app these are Capacitor's native plugins. In a plain browser they stay
+     null and the page falls back to in-page sound and an ordinary download. */
+  const cap = window.Capacitor;
+  const isNative = !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform());
+  const nativePlugin = name => (isNative && window.capacitorExports ? window.capacitorExports.registerPlugin(name) : null);
+  const Notif = nativePlugin('LocalNotifications');
+  const Files = nativePlugin('Filesystem');
+  const Sharing = nativePlugin('Share');
+  const Awake = nativePlugin('KeepAwake');
+  const NOTE = { wind: 101, end: 102 };
+  const CHANNEL = { wind: 'wind-down-v1', end: 'session-end-v1' };
+
+  const PRESETS = [30, 45, 50, 53, 60, 90];
+  const CUES = [0, 5, 10, 15];
+  const CPT = [{ min: 16, code: '90832' }, { min: 38, code: '90834' }, { min: 53, code: '90837' }];
+  const DEFAULTS = { status: 'idle', startedAt: null, accumulated: 0, runStart: null, targetMin: 53, cueMin: 10, chime: false, showCpt: true, keepAwake: true };
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const CX = 200, CY = 200, R = 150, R2 = 132;
+  const CIRC = 2 * Math.PI * R, CIRC2 = 2 * Math.PI * R2;
+
+  const dial = $('dial'), prog = $('prog'), overring = $('overring'), windzone = $('windzone');
+  const tip = $('tip'), halo = $('halo'), scale = $('scale');
+  const readout = $('readout'), phaseEl = $('phase'), digitsEl = $('digits'), subEl = $('sub'), live = $('live');
+  const btnMain = $('btnMain'), btnEnd = $('btnEnd'), btnReset = $('btnReset');
+  const cptBox = $('cpt'), cptNote = $('cptNote'), cptSteps = $('cptSteps');
+  const lenChips = $('lenChips'), cueChips = $('cueChips'), customMin = $('customMin');
+  const optChime = $('optChime'), optCpt = $('optCpt'), optAwake = $('optAwake');
+  const chimeNotice = $('chimeNotice'), chimeMsg = $('chimeMsg'), btnExact = $('btnExact');
+  const logList = $('logList'), logEmpty = $('logEmpty'), logSum = $('logSum'), logTools = $('logTools');
+  const btnCopy = $('btnCopy'), btnClear = $('btnClear'), copyFallback = $('copyFallback');
+  const histSum = $('histSum'), expFrom = $('expFrom'), expTo = $('expTo');
+  const btnExport = $('btnExport'), btnWipe = $('btnWipe'), exportMsg = $('exportMsg'), csvFallback = $('csvFallback');
+
+  let booted = false, exportMode = 'save';
+  const rangeTouched = { from: false, to: false };
+  let state, log = [];
+  let lastDigits = '', lastPhase = '', lastMinute = -1, scaleKey = '';
+
+  /* ---------- formatting ---------- */
+  const pad = n => String(n).padStart(2, '0');
+  const fmtMS = sec => pad(Math.floor(sec / 60)) + ':' + pad(sec % 60);
+  const fmtClock = ts => new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const fmtTotal = ms => {
+    const m = Math.round(ms / 60000), h = Math.floor(m / 60);
+    return h ? h + ' h ' + (m % 60) + ' min' : m + ' min';
+  };
+  const isToday = ts => new Date(ts).toDateString() === new Date().toDateString();
+  const cptFor = ms => {
+    const mins = Math.floor(ms / 60000);
+    let code = null;
+    CPT.forEach(c => { if (mins >= c.min) code = c.code; });
+    return code;
+  };
+  /* dates and times for the CSV are built by hand so the file stays plain ASCII */
+  const dayKey = ts => { const d = new Date(ts); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+  const mmddyy = key => { const p = key.split('-'); return p[1] + p[2] + p[0].slice(-2); };
+  const csvDate = ts => { const d = new Date(ts); return pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + '/' + d.getFullYear(); };
+  const csvTime = ts => { const d = new Date(ts), h = d.getHours(); return (h % 12 || 12) + ':' + pad(d.getMinutes()) + ' ' + (h < 12 ? 'AM' : 'PM'); };
+  const csvLen = ms => { const s = Math.floor(ms / 1000); return Math.floor(s / 3600) + ':' + pad(Math.floor(s % 3600 / 60)) + ':' + pad(s % 60); };
+
+  /* ---------- timing ---------- */
+  const elapsedMs = (now = Date.now()) =>
+    state.accumulated + (state.status === 'running' ? Math.max(0, now - state.runStart) : 0);
+  const cueEff = () => (state.cueMin > 0 && state.cueMin < state.targetMin ? state.cueMin : 0);
+  const save = () => store.set(LS_STATE, state);
+
+  /* ---------- chime (scheduled on the audio clock so a background tab stays on time) ---------- */
+  let actx = null, scheduled = [];
+  function ensureAudio() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      actx = actx || new AC();
+      if (actx.state === 'suspended') actx.resume();
+    } catch (e) { actx = null; }
+    return actx;
+  }
+  function bell(at, freq, vol) {
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(vol, at + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + 2.8);
+    g.connect(actx.destination);
+    const partials = [[1, 1], [2.76, 0.22]];
+    partials.forEach(([mult, level]) => {
+      const o = actx.createOscillator(), pg = actx.createGain();
+      o.type = 'sine';
+      o.frequency.value = freq * mult;
+      pg.gain.value = level;
+      o.connect(pg); pg.connect(g);
+      o.start(at); o.stop(at + 3);
+      scheduled.push({ o, g });
+    });
+  }
+  function clearChimes() {
+    scheduled.forEach(n => {
+      try { n.o.stop(); } catch (e) {}
+      try { n.g.disconnect(); } catch (e) {}
+    });
+    scheduled = [];
+  }
+  function scheduleChimes() {
+    clearChimes();
+    if (Notif) { nativeQueue = nativeQueue.then(scheduleNative, scheduleNative); return; }
+    if (!state.chime || state.status !== 'running' || !ensureAudio()) return;
+    const el = elapsedMs(), T = state.targetMin * 60000, t0 = actx.currentTime;
+    const cueAt = T - cueEff() * 60000;
+    if (cueEff() && cueAt > el) bell(t0 + (cueAt - el) / 1000, 528, 0.16);
+    if (T > el) {
+      const at = t0 + (T - el) / 1000;
+      bell(at, 660, 0.18);
+      bell(at + 0.7, 495, 0.18);
+    }
+  }
+
+  /* ---------- chime inside the Android app ----------
+     Android delivers each chime as a scheduled notification, so it sounds with the screen off
+     or the app in the background. Each channel plays its own sound file from
+     android/app/src/main/res/raw. Android fixes a channel's sound the first time the channel is
+     created, so to change a sound later, replace the file AND rename the channel id (v1 -> v2). */
+  let nativeQueue = Promise.resolve(), channelsReady = null;
+  function showChimeMsg(text, offerExact) {
+    chimeMsg.textContent = text;
+    btnExact.hidden = !offerExact;
+    chimeNotice.hidden = !text;
+  }
+  function ensureChannels() {
+    channelsReady = channelsReady || Promise.all([
+      Notif.createChannel({
+        id: CHANNEL.wind, name: 'Wind-down chime',
+        description: 'Sounds when the wind-down part of a session begins',
+        importance: 4, visibility: 1, sound: 'chime_wind.wav', vibration: true
+      }),
+      Notif.createChannel({
+        id: CHANNEL.end, name: 'Session end chime',
+        description: 'Sounds when the planned session length is reached',
+        importance: 4, visibility: 1, sound: 'chime_end.wav', vibration: true
+      })
+    ]);
+    return channelsReady;
+  }
+  async function scheduleNative() {
+    try { await Notif.cancel({ notifications: [{ id: NOTE.wind }, { id: NOTE.end }] }); } catch (e) {}
+    if (!state.chime || state.status !== 'running') return;
+    const now = Date.now(), el = elapsedMs(now), T = state.targetMin * 60000, cue = cueEff();
+    const untilCue = T - cue * 60000 - el, untilEnd = T - el;
+    const list = [];
+    if (cue && untilCue > 1000) {
+      list.push({
+        id: NOTE.wind, channelId: CHANNEL.wind,
+        title: 'Wind-down', body: cue + ' minutes left in this session',
+        schedule: { at: new Date(now + untilCue), allowWhileIdle: true }
+      });
+    }
+    if (untilEnd > 1000) {
+      list.push({
+        id: NOTE.end, channelId: CHANNEL.end,
+        title: 'Session time reached', body: 'The planned ' + state.targetMin + ' minutes are up',
+        schedule: { at: new Date(now + untilEnd), allowWhileIdle: true }
+      });
+    }
+    if (!list.length) return;
+    try {
+      await ensureChannels();
+      await Notif.schedule({ notifications: list });
+    } catch (e) {
+      channelsReady = null;
+      showChimeMsg('Android did not accept the chime. Check that notifications are allowed for Session Dial.', false);
+    }
+  }
+  async function checkNativeChime(ask) {
+    if (!Notif) return;
+    try {
+      let p = await Notif.checkPermissions();
+      if (p.display !== 'granted' && ask) p = await Notif.requestPermissions();
+      if (p.display !== 'granted') {
+        showChimeMsg('Notifications are off for Session Dial, so the chime cannot sound. Turn them on in Android settings, under Apps.', false);
+        return;
+      }
+      const exact = await Notif.checkExactNotificationSetting();
+      if (exact.exact_alarm !== 'granted') {
+        showChimeMsg('Android may play the chime several minutes late until exact alarms are allowed.', true);
+        return;
+      }
+      showChimeMsg('', false);
+    } catch (e) {}
+  }
+
+  /* ---------- screen wake lock ---------- */
+  let wake = null;
+  function holdWake() {
+    if (!state.keepAwake) return;
+    if (Awake) {
+      if (state.status === 'running') Awake.keepAwake().catch(() => {});
+      return;
+    }
+    try {
+      if (navigator.wakeLock && state.status === 'running' && document.visibilityState === 'visible') {
+        navigator.wakeLock.request('screen').then(l => { wake = l; }).catch(() => {});
+      }
+    } catch (e) {}
+  }
+  function dropWake() {
+    if (Awake) { Awake.allowSleep().catch(() => {}); return; }
+    try { if (wake) wake.release().catch(() => {}); } catch (e) {}
+    wake = null;
+  }
+
+  /* ---------- dial scale ---------- */
+  function polar(frac, r) {
+    const a = frac * 2 * Math.PI;
+    return [CX + r * Math.sin(a), CY - r * Math.cos(a)];
+  }
+  function addTick(frac, r1, r2, cls) {
+    const [x1, y1] = polar(frac, r1), [x2, y2] = polar(frac, r2);
+    const l = document.createElementNS(SVGNS, 'line');
+    l.setAttribute('x1', x1.toFixed(2)); l.setAttribute('y1', y1.toFixed(2));
+    l.setAttribute('x2', x2.toFixed(2)); l.setAttribute('y2', y2.toFixed(2));
+    l.setAttribute('class', 'tick ' + cls);
+    scale.appendChild(l);
+  }
+  function addLabel(frac, text, cls) {
+    const [x, y] = polar(frac, 186);
+    const t = document.createElementNS(SVGNS, 'text');
+    t.setAttribute('x', x.toFixed(2)); t.setAttribute('y', y.toFixed(2));
+    t.setAttribute('text-anchor', 'middle'); t.setAttribute('dominant-baseline', 'central');
+    t.setAttribute('class', 'scale-label ' + cls);
+    t.textContent = text;
+    scale.appendChild(t);
+  }
+  function buildScale() {
+    const T = state.targetMin, cue = cueEff();
+    const key = [T, cue, state.showCpt].join('|');
+    if (key === scaleKey) return;
+    scaleKey = key;
+    while (scale.firstChild) scale.removeChild(scale.firstChild);
+
+    const windLen = CIRC * (cue / T);
+    windzone.style.strokeDasharray = windLen + ' ' + CIRC;
+    windzone.style.strokeDashoffset = -(CIRC - windLen);
+
+    const deg = (a, b) => Math.abs(a - b) / T * 360;
+    const cpts = state.showCpt ? CPT.filter(c => c.min < T) : [];
+    const minor = T <= 120 ? 5 : T <= 300 ? 15 : 30;
+    const step = T <= 60 ? 10 : T <= 120 ? 15 : T <= 300 ? 30 : 60;
+
+    for (let m = minor; m < T; m += minor) {
+      if (cpts.some(c => c.min === m)) continue;
+      addTick(m / T, 163, m % step === 0 ? 171 : 168, m % step === 0 ? 'major' : '');
+    }
+    for (let m = step; m < T; m += step) {
+      if (deg(m, T) < 15) continue;
+      if (cpts.some(c => deg(c.min, m) < 15)) continue;
+      addLabel(m / T, String(m), '');
+    }
+    cpts.forEach(c => {
+      addTick(c.min / T, 161, 173, 'cpt');
+      if (deg(c.min, T) >= 15) addLabel(c.min / T, String(c.min), 'cpt');
+    });
+    const topIsCpt = state.showCpt && CPT.some(c => c.min === T);
+    addTick(0, 161, 173, topIsCpt ? 'cpt' : 'major');
+    addLabel(0, String(T), 'top' + (topIsCpt ? ' cpt' : ''));
+  }
+
+  /* ---------- render ---------- */
+  function setDigits(text) {
+    if (text === lastDigits) return;
+    lastDigits = text;
+    digitsEl.textContent = '';
+    for (const ch of text) {
+      const s = document.createElement('span');
+      s.className = ch === ':' ? 'c' : 'd';
+      s.textContent = ch;
+      digitsEl.appendChild(s);
+    }
+    digitsEl.classList.toggle('long', text.length > 5);
+  }
+
+  function render() {
+    const now = Date.now();
+    const T = state.targetMin * 60;
+    const elMs = elapsedMs(now);
+    const sec = Math.floor(elMs / 1000);
+    const started = state.status !== 'idle';
+    const left = Math.max(0, T - sec), over = Math.max(0, sec - T);
+    const cue = cueEff();
+    const zone = !started ? 'main' : sec >= T ? 'over' : (cue && left <= cue * 60) ? 'wind' : 'main';
+
+    dial.dataset.status = state.status;
+    dial.dataset.zone = zone;
+
+    const phase = state.status === 'idle' ? 'Ready'
+      : state.status === 'paused' ? 'Paused'
+      : zone === 'over' ? 'Over time' : zone === 'wind' ? 'Wind-down' : 'In session';
+    if (phase !== lastPhase) {
+      phaseEl.textContent = phase;
+      if (lastPhase) live.textContent = phase;
+      lastPhase = phase;
+    }
+
+    setDigits(fmtMS(sec));
+    const minute = Math.floor(sec / 60);
+    if (minute !== lastMinute) {
+      lastMinute = minute;
+      readout.setAttribute('aria-label', minute + (minute === 1 ? ' minute' : ' minutes') + ' elapsed of ' + state.targetMin);
+    }
+
+    let sub;
+    if (!started) sub = 'Start now and finish at ' + fmtClock(now + T * 1000);
+    else if (zone === 'over') sub = fmtMS(over) + ' past ' + state.targetMin + ' min';
+    else if (state.status === 'paused') sub = fmtMS(left) + ' left when you resume';
+    else sub = fmtMS(left) + ' left · ends ' + fmtClock(now + left * 1000);
+    if (subEl.textContent !== sub) subEl.textContent = sub;
+
+    const frac = Math.min(elMs / (T * 1000), 1);
+    prog.style.strokeDasharray = CIRC + ' ' + CIRC;
+    prog.style.strokeDashoffset = CIRC * (1 - frac);
+    prog.style.opacity = elMs > 0 ? 1 : 0;
+
+    const overFrac = Math.min(Math.max(0, elMs - T * 1000) / (T * 1000), 1);
+    overring.style.strokeDasharray = CIRC2 + ' ' + CIRC2;
+    overring.style.strokeDashoffset = CIRC2 * (1 - overFrac);
+    overring.style.opacity = overFrac > 0 ? 1 : 0;
+
+    const showTip = started && zone !== 'over';
+    const [tx, ty] = polar(frac, R);
+    [tip, halo].forEach(c => {
+      c.setAttribute('cx', tx.toFixed(2)); c.setAttribute('cy', ty.toFixed(2));
+      c.style.display = showTip ? '' : 'none';
+    });
+
+    cptBox.hidden = !state.showCpt;
+    if (state.showCpt) {
+      let current = -1;
+      CPT.forEach((c, i) => { if (minute >= c.min) current = i; });
+      Array.from(cptSteps.children).forEach((li, i) => {
+        li.classList.toggle('reached', i < current);
+        li.classList.toggle('current', i === current);
+      });
+      const next = CPT[current + 1];
+      const note = !started ? 'Follows the elapsed time'
+        : next ? fmtMS(next.min * 60 - sec) + ' until ' + next.code
+        : CPT[current].code + ' reached';
+      if (cptNote.textContent !== note) cptNote.textContent = note;
+    }
+
+    const d = new Date(now);
+    const dateText = d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    if ($('nowDate').textContent !== dateText) {
+      $('nowDate').textContent = dateText;
+      if (booted) renderLog(); /* the day rolled over: refresh Today and the export dates */
+    }
+    const timeText = fmtClock(now);
+    if ($('nowTime').textContent !== timeText) $('nowTime').textContent = timeText;
+  }
+
+  function syncControls() {
+    lenChips.querySelectorAll('.chip').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.min === state.targetMin)));
+    cueChips.querySelectorAll('.chip').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.cue === state.cueMin)));
+    if (document.activeElement !== customMin) customMin.value = state.targetMin;
+    optChime.checked = state.chime;
+    optCpt.checked = state.showCpt;
+    optAwake.checked = state.keepAwake;
+    const idle = state.status === 'idle';
+    btnMain.textContent = idle ? 'Start session' : state.status === 'running' ? 'Pause' : 'Resume';
+    btnEnd.hidden = idle;
+    btnReset.hidden = idle;
+    buildScale();
+  }
+
+  /* ---------- actions ---------- */
+  function commit() { save(); syncControls(); scheduleChimes(); render(); }
+
+  function toggleMain() {
+    const now = Date.now();
+    if (state.status === 'running') {
+      state.accumulated = elapsedMs(now);
+      state.runStart = null;
+      state.status = 'paused';
+      dropWake();
+    } else {
+      if (state.status === 'idle') { state.startedAt = now; state.accumulated = 0; }
+      state.runStart = now;
+      state.status = 'running';
+      if (state.chime) ensureAudio();
+      holdWake();
+    }
+    commit();
+  }
+  function resetTimer() {
+    state.status = 'idle';
+    state.startedAt = null; state.runStart = null; state.accumulated = 0;
+    dropWake();
+    if (Notif) Notif.removeAllDeliveredNotifications().catch(() => {});
+    disarm(btnReset);
+    commit();
+  }
+  function endSession() {
+    const now = Date.now(), ms = elapsedMs(now);
+    if (ms >= 1000) {
+      log.push({ start: state.startedAt || now - ms, end: now, ms: ms, target: state.targetMin });
+      saveLog();
+    }
+    resetTimer();
+  }
+  function setTarget(min) {
+    const v = Math.min(600, Math.max(1, Math.round(Number(min) || 0)));
+    if (!v) return;
+    state.targetMin = v;
+    commit();
+  }
+
+  /* two-tap confirmation, since the viewer shows no confirm() dialogs */
+  const armTimers = new Map();
+  function disarm(btn) {
+    if (!btn.dataset.armed) return;
+    clearTimeout(armTimers.get(btn));
+    btn.textContent = btn.dataset.label;
+    delete btn.dataset.armed;
+  }
+  function twoTap(btn, prompt, fn) {
+    if (btn.dataset.armed) { disarm(btn); fn(); return; }
+    btn.dataset.armed = '1';
+    btn.dataset.label = btn.textContent;
+    btn.textContent = prompt;
+    armTimers.set(btn, setTimeout(() => disarm(btn), 3500));
+  }
+
+  /* ---------- log ---------- */
+  function saveLog() {
+    if (log.length > 5000) log = log.slice(-5000);
+    store.set(LS_LOG, log);
+    renderLog();
+  }
+  function renderLog() {
+    const today = log.filter(e => isToday(e.start));
+    logList.textContent = '';
+    today.forEach(e => {
+      const li = document.createElement('li');
+      const when = document.createElement('span'); when.className = 'when';
+      when.textContent = fmtClock(e.start) + ' – ' + fmtClock(e.end);
+      const dur = document.createElement('span'); dur.className = 'dur';
+      dur.textContent = fmtMS(Math.floor(e.ms / 1000));
+      const code = document.createElement('span'); code.className = 'code';
+      code.textContent = state.showCpt ? (cptFor(e.ms) || 'under 16') : '';
+      const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'rm';
+      rm.textContent = '×';
+      rm.setAttribute('aria-label', 'Remove the session that ended at ' + fmtClock(e.end));
+      rm.addEventListener('click', () => {
+        const i = log.indexOf(e);
+        if (i > -1) log.splice(i, 1);
+        saveLog();
+      });
+      li.append(when, dur, code, rm);
+      logList.appendChild(li);
+    });
+    logEmpty.hidden = today.length > 0;
+    logTools.hidden = today.length === 0;
+    if (!today.length) copyFallback.hidden = true;
+    const total = today.reduce((a, e) => a + e.ms, 0);
+    logSum.textContent = today.length ? today.length + (today.length === 1 ? ' session · ' : ' sessions · ') + fmtTotal(total) : '';
+
+    const todayKey = dayKey(Date.now());
+    if (log.length) {
+      const first = log.reduce((a, e) => Math.min(a, e.start), Infinity);
+      histSum.textContent = log.length + (log.length === 1 ? ' session' : ' sessions') + ' since ' +
+        new Date(first).toLocaleDateString([], { month: 'short', day: 'numeric' });
+      if (!rangeTouched.from) expFrom.value = dayKey(first);
+    } else {
+      histSum.textContent = 'Nothing logged yet';
+      if (!rangeTouched.from) expFrom.value = todayKey;
+    }
+    if (!rangeTouched.to) expTo.value = todayKey;
+    btnWipe.hidden = log.length === 0;
+  }
+  function logText() {
+    const head = new Date().toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const rows = log.filter(e => isToday(e.start)).map(e => {
+      const code = state.showCpt ? '  ' + (cptFor(e.ms) || 'under 16 min') : '';
+      return fmtClock(e.start) + ' – ' + fmtClock(e.end) + '  ' + fmtMS(Math.floor(e.ms / 1000)) + code;
+    });
+    return [head].concat(rows).join('\n');
+  }
+  function copyLog() {
+    const text = logText();
+    const done = () => {
+      btnCopy.textContent = 'Copied';
+      setTimeout(() => { btnCopy.textContent = 'Copy list'; }, 1600);
+    };
+    const fallback = () => {
+      copyFallback.value = text;
+      copyFallback.hidden = false;
+      copyFallback.focus();
+      copyFallback.select();
+    };
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
+  }
+
+  /* ---------- CSV export ---------- */
+  function setExportMsg(text) { exportMsg.textContent = text; exportMsg.hidden = !text; }
+  function exportRange() {
+    const todayKey = dayKey(Date.now());
+    let from = expFrom.value || todayKey, to = expTo.value || todayKey;
+    if (from > to) { const t = from; from = to; to = t; }
+    return { from, to };
+  }
+  function buildCsv(rows) {
+    const head = ['Date', 'Start', 'End', 'Length (h:mm:ss)', 'Minutes', 'Planned minutes'];
+    if (state.showCpt) head.push('CPT code');
+    const lines = [head].concat(rows.map(e => {
+      const r = [csvDate(e.start), csvTime(e.start), csvTime(e.end), csvLen(e.ms), Math.floor(e.ms / 60000), e.target || ''];
+      if (state.showCpt) r.push(cptFor(e.ms) || '');
+      return r;
+    }));
+    return lines.map(r => r.map(v => {
+      const s = String(v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }).join(',')).join('\r\n') + '\r\n';
+  }
+  function useCopyMode() { exportMode = 'copy'; btnExport.textContent = 'Copy as CSV'; }
+  function copyCsv(text, name) {
+    const fallback = () => {
+      csvFallback.value = text;
+      csvFallback.hidden = false;
+      csvFallback.focus();
+      csvFallback.select();
+      setExportMsg('Copy the text below into a file named ' + name);
+    };
+    try {
+      navigator.clipboard.writeText(text).then(() => setExportMsg('Copied. Paste it into a file named ' + name), fallback);
+    } catch (e) { fallback(); }
+  }
+  async function exportCsv() {
+    const { from, to } = exportRange();
+    const rows = log.filter(e => { const k = dayKey(e.start); return k >= from && k <= to; })
+      .sort((a, b) => a.start - b.start);
+    csvFallback.hidden = true;
+    if (!rows.length) { setExportMsg('No sessions were logged between those dates.'); return; }
+    const name = mmddyy(from) + ' - ' + mmddyy(to) + '.csv';
+    const text = buildCsv(rows);
+    if (exportMode === 'copy') { copyCsv(text, name); return; }
+    const count = rows.length + (rows.length === 1 ? ' session' : ' sessions');
+    if (Files && Sharing) {
+      /* In the app: write the file into the app's cache, then open Android's share sheet so it
+         can go to Drive, Files, email or anywhere else. */
+      btnExport.disabled = true;
+      let uri;
+      try {
+        uri = (await Files.writeFile({ path: name, data: text, directory: 'CACHE', encoding: 'utf8' })).uri;
+      } catch (err) {
+        btnExport.disabled = false;
+        useCopyMode();
+        setExportMsg('The file could not be written. Use Copy as CSV instead.');
+        return;
+      }
+      try {
+        await Sharing.share({ title: name, files: [uri], dialogTitle: 'Save or send ' + name });
+        setExportMsg('Exported ' + name + ' with ' + count + '.');
+      } catch (err) {
+        setExportMsg('Export cancelled.');
+      } finally {
+        btnExport.disabled = false;
+      }
+      return;
+    }
+    /* In a plain browser: an ordinary download. */
+    try {
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      setExportMsg('Saved ' + name + ' with ' + count + '.');
+    } catch (err) {
+      useCopyMode();
+      copyCsv(text, name);
+    }
+  }
+
+  /* ---------- wiring ---------- */
+  function bind() {
+    btnMain.addEventListener('click', toggleMain);
+    btnEnd.addEventListener('click', endSession);
+    btnReset.addEventListener('click', () => twoTap(btnReset, 'Tap again to discard', resetTimer));
+    btnCopy.addEventListener('click', copyLog);
+    btnClear.addEventListener('click', () => twoTap(btnClear, 'Tap again to clear', () => {
+      log = log.filter(e => !isToday(e.start));
+      saveLog();
+    }));
+    btnExport.addEventListener('click', exportCsv);
+    btnWipe.addEventListener('click', () => twoTap(btnWipe, 'Tap again to delete all', () => {
+      log = [];
+      setExportMsg('');
+      saveLog();
+    }));
+    expFrom.addEventListener('change', () => { rangeTouched.from = true; setExportMsg(''); });
+    expTo.addEventListener('change', () => { rangeTouched.to = true; setExportMsg(''); });
+
+    lenChips.addEventListener('click', e => {
+      const b = e.target.closest('.chip');
+      if (b) setTarget(b.dataset.min);
+    });
+    customMin.addEventListener('change', () => { setTarget(customMin.value); customMin.value = state.targetMin; });
+    cueChips.addEventListener('click', e => {
+      const b = e.target.closest('.chip');
+      if (!b) return;
+      state.cueMin = +b.dataset.cue;
+      commit();
+    });
+    optChime.addEventListener('change', () => {
+      state.chime = optChime.checked;
+      if (state.chime && ensureAudio()) bell(actx.currentTime + 0.05, 528, 0.16);
+      if (Notif) {
+        if (state.chime) checkNativeChime(true).then(commit);
+        else { showChimeMsg('', false); commit(); }
+        return;
+      }
+      commit();
+    });
+    btnExact.addEventListener('click', () => {
+      Notif.changeExactNotificationSetting().catch(() => {}).then(() => checkNativeChime(false));
+    });
+    optAwake.addEventListener('change', () => {
+      state.keepAwake = optAwake.checked;
+      save();
+      if (state.keepAwake) holdWake(); else dropWake();
+    });
+    optCpt.addEventListener('change', () => { state.showCpt = optCpt.checked; commit(); renderLog(); });
+
+    document.addEventListener('keydown', e => {
+      if (e.code !== 'Space' || e.repeat) return;
+      const t = e.target;
+      if (t && t.closest && t.closest('button, input, textarea, select, a, label')) return;
+      e.preventDefault();
+      toggleMain();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      render();
+      holdWake();
+      scheduleChimes();
+      if (Notif && state.chime) checkNativeChime(false);
+    });
+    /* after a reload mid-session, sound needs one tap before the browser allows it */
+    document.addEventListener('pointerdown', () => {
+      if (!Notif && state.chime && state.status === 'running' && (!actx || actx.state !== 'running')) scheduleChimes();
+    });
+  }
+
+  function buildChips() {
+    lenChips.innerHTML = PRESETS.map(m =>
+      '<button type="button" class="chip" id="len-' + m + '" data-min="' + m + '" aria-pressed="false">' + m + '</button>').join('');
+    cueChips.innerHTML = CUES.map(m =>
+      '<button type="button" class="chip" id="cue-' + m + '" data-cue="' + m + '" aria-pressed="false">' + (m ? m + ' min' : 'Off') + '</button>').join('');
+  }
+
+  function start(data) {
+    const saved = (data && data.state) || store.get(LS_STATE) || {};
+    state = Object.assign({}, DEFAULTS, saved);
+    state.targetMin = Math.min(600, Math.max(1, Math.round(Number(state.targetMin) || DEFAULTS.targetMin)));
+    if (!CUES.includes(state.cueMin)) state.cueMin = DEFAULTS.cueMin;
+    state.accumulated = Math.max(0, Number(state.accumulated) || 0);
+    state.chime = !!state.chime;
+    state.showCpt = !!state.showCpt;
+    state.keepAwake = state.keepAwake !== false;
+    if (!['idle', 'running', 'paused'].includes(state.status)) state.status = 'idle';
+    if (state.status === 'running' && !state.runStart) state.status = 'idle';
+    /* a session left running overnight is stale, not a 14-hour appointment */
+    if (state.status !== 'idle' && elapsedMs() > 12 * 3600 * 1000) state.status = 'idle';
+    if (state.status === 'idle') { state.startedAt = null; state.runStart = null; state.accumulated = 0; }
+
+    const savedLog = store.get(LS_LOG);
+    log = Array.isArray(savedLog) ? savedLog.filter(e => e && e.start && e.end && e.ms) : [];
+
+    buildChips();
+    bind();
+    syncControls();
+    renderLog();
+    render();
+    booted = true;
+    holdWake();
+    /* If Android restarted the app mid-session, put the chimes back on its schedule. */
+    if (Notif) { scheduleChimes(); if (state.chime) checkNativeChime(false); }
+    setInterval(render, 250);
+  }
+
+  start({});
+})();
+</script>
+</body>
+</html>
