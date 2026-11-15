@@ -93,8 +93,9 @@ notification vibrates but makes no sound.
 
 ## Things that behave differently from the web version
 
-- **Export CSV** opens Android's share sheet, so the file can go to Drive, Files or email. The file
-  name is the same: `mmddyy - mmddyy.csv`.
+- **Export CSV** opens Android's "save as" screen, where you choose the folder (Downloads, Drive,
+  anywhere) and can rename the file before saving. The suggested name is the same:
+  `mmddyy - mmddyy.csv`. The code for that screen is `SaveFilePlugin.java`, next to `MainActivity.java`.
 - **Keep the screen on while timing** is a new switch. It only stops the phone dimming by itself;
   you can still lock it by hand and the chimes will sound.
 - The session log lives inside the app on this phone. It does not carry over from the web page.
@@ -116,9 +117,10 @@ notification vibrates but makes no sound.
 
 Tested: the page's logic was run in Chrome against a stand-in for Android. Starting a 6-minute
 session with a 5-minute wind-down scheduled the two notifications 60 and 360 seconds out, pausing
-cancelled them, and export wrote the correctly named file and opened the share call. `npx cap sync`
-completes with all four plugins found.
+cancelled them, and export passed the correctly named CSV to the save screen and reported saved,
+cancelled and failed correctly. `npx cap sync` completes with all four plugins found, and the
+project compiles into a debug APK (GitHub builds one on every push; see the Actions tab).
 
-Not tested: the project has not been compiled into an APK or run on a phone, because the machine it
-was prepared on has no Android SDK. Treat the first build and the six-minute test above as the real
-check.
+Not tested by the people who prepared it: the app running on a phone. That covers the chimes with
+the screen off and the real "save as" screen for export. Treat the six-minute test above and one
+export as the real check.

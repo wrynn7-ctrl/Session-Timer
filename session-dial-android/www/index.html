@@ -411,6 +411,7 @@ button, input { font: inherit; color: inherit; }
   const Notif = nativePlugin('LocalNotifications');
   const Files = nativePlugin('Filesystem');
   const Sharing = nativePlugin('Share');
+  const Saver = nativePlugin('SaveFile');
   const Awake = nativePlugin('KeepAwake');
   const NOTE = { wind: 101, end: 102 };
   const CHANNEL = { wind: 'wind-down-v1', end: 'session-end-v1' };
@@ -945,9 +946,28 @@ button, input { font: inherit; color: inherit; }
     const text = buildCsv(rows);
     if (exportMode === 'copy') { copyCsv(text, name); return; }
     const count = rows.length + (rows.length === 1 ? ' session' : ' sessions');
+    if (Saver) {
+      /* In the app: open Android's "save as" screen, so the user picks the folder (Downloads,
+         Drive, anywhere) and the app writes the CSV there. */
+      btnExport.disabled = true;
+      try {
+        const res = await Saver.save({ name: name, data: text, mimeType: 'text/csv' });
+        setExportMsg(res && res.saved ? 'Saved ' + (res.name || name) + ' with ' + count + '.' : 'Export cancelled.');
+        btnExport.disabled = false;
+        return;
+      } catch (err) {
+        btnExport.disabled = false;
+        if (!(err && err.code === 'UNAVAILABLE' && Files && Sharing)) {
+          useCopyMode();
+          setExportMsg('The file could not be saved. Use Copy as CSV instead.');
+          return;
+        }
+        /* No file picker on this phone: fall through to the share sheet below. */
+      }
+    }
     if (Files && Sharing) {
-      /* In the app: write the file into the app's cache, then open Android's share sheet so it
-         can go to Drive, Files, email or anywhere else. */
+      /* Fallback when there is no file picker: write the file into the app's cache, then open
+         Android's share sheet. */
       btnExport.disabled = true;
       let uri;
       try {
