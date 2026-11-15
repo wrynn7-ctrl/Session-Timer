@@ -1,0 +1,64 @@
+# Checks Export CSV on a real Android emulator: logs a session, exports, saves through Android's
+# "save as" screen and confirms the file. Screenshots and the saved CSV are attached to the run.
+# Start it by hand from the Actions tab; it also runs when the test itself is changed.
+name: Emulator export test
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'session-dial-android/scripts/emulator-export-test.py'
+      - '.github/workflows/emulator-export-test.yml'
+
+jobs:
+  export-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: session-dial-android
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: session-dial-android/package-lock.json
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Build debug APK
+        run: |
+          npm ci
+          npx cap sync android
+          cd android && ./gradlew assembleDebug --no-daemon
+
+      # Lets the emulator use the server's hardware virtualisation, which is what makes it fast.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run the export test on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          disable-animations: true
+          working-directory: session-dial-android
+          script: |
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            python3 scripts/emulator-export-test.py emulator-out
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emulator-export-test
+          path: session-dial-android/emulator-out/
