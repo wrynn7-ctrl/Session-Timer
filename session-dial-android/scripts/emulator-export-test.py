@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """Drives the installed app on a running emulator to check Export CSV end to end.
 
-Logs a short session, taps Export CSV, saves through Android's real "save as" screen, then checks
-the CSV landed in Downloads. Screenshots of each step and the saved file go into the output folder.
+Logs a short session, presses Export CSV, saves through Android's real "save as" screen, then
+checks the CSV landed in Downloads. Screenshots of each step and the saved file go into the output
+folder.
+
+The app's own buttons are pressed through the WebView's debugging connection (debug builds only),
+because Android's screen reader cannot read the page while the timer is ticking. The "save as"
+screen belongs to Android, so there the script finds the Save button on screen and taps it.
 
 Usage: python3 scripts/emulator-export-test.py <output-folder>
 """
-import os, re, subprocess, sys, time
+import base64, json, os, re, socket, struct, subprocess, sys, time
+import urllib.request
 import xml.etree.ElementTree as ET
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else 'emulator-out'
@@ -90,32 +96,109 @@ def tap(pattern, **kw):
     adb('shell', 'input', 'tap', str(x), str(y))
 
 
+def page(expression):
+    """Run a line of JavaScript in the app's page and return its value."""
+    pid = adb('shell', 'pidof', APP).split()[0]
+    adb('forward', 'tcp:9222', 'localabstract:webview_devtools_remote_' + pid)
+    pages = json.load(urllib.request.urlopen('http://127.0.0.1:9222/json', timeout=20))
+    path = '/' + pages[0]['webSocketDebuggerUrl'].split('/', 3)[3]
+    sock = socket.create_connection(('127.0.0.1', 9222), timeout=30)
+    try:
+        key = base64.b64encode(os.urandom(16)).decode()
+        sock.sendall(('GET %s HTTP/1.1\r\nHost: 127.0.0.1:9222\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n'
+                      'Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n' % (path, key)).encode())
+        buf = b''
+        while b'\r\n\r\n' not in buf:
+            buf += sock.recv(4096)
+        if b' 101 ' not in buf.split(b'\r\n')[0]:
+            raise RuntimeError('debugging connection refused: %r' % buf[:200])
+        buf = buf.split(b'\r\n\r\n', 1)[1]
+        body = json.dumps({'id': 1, 'method': 'Runtime.evaluate',
+                           'params': {'expression': expression, 'returnByValue': True}}).encode()
+        mask = os.urandom(4)
+        head = bytes([0x81, 0x80 | len(body)]) if len(body) < 126 else bytes([0x81, 0xFE]) + struct.pack('>H', len(body))
+        sock.sendall(head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(body)))
+
+        def need(n):
+            nonlocal buf
+            while len(buf) < n:
+                chunk = sock.recv(65536)
+                if not chunk:
+                    raise RuntimeError('debugging connection closed')
+                buf += chunk
+            out, buf = buf[:n], buf[n:]
+            return out
+
+        while True:
+            b0, b1 = need(2)
+            size = b1 & 0x7F
+            if size == 126:
+                size = struct.unpack('>H', need(2))[0]
+            elif size == 127:
+                size = struct.unpack('>Q', need(8))[0]
+            payload = need(size)
+            if b0 & 0x0F != 1:
+                continue
+            msg = json.loads(payload)
+            if msg.get('id') == 1:
+                result = msg.get('result', {})
+                if 'exceptionDetails' in result:
+                    raise RuntimeError('page error: %s' % json.dumps(result['exceptionDetails'])[:300])
+                return result.get('result', {}).get('value')
+    finally:
+        sock.close()
+
+
+def press(button_id, expect):
+    """Press one of the app's buttons, after checking it shows the expected label."""
+    label = None
+    for _ in range(30):
+        try:
+            label = page("(function(){var b=document.getElementById('%s');"
+                         "return b&&!b.hidden&&!b.disabled?b.textContent.trim():null})()" % button_id)
+        except Exception as e:
+            label = 'not ready: %s' % e
+        if label == expect:
+            break
+        time.sleep(2)
+    else:
+        fail('expected a %r button (#%s), found %r' % (expect, button_id, label))
+    page("(function(){var b=document.getElementById('%s');b.scrollIntoView({block:'center'});b.click()})()" % button_id)
+    print('pressed %r' % expect, flush=True)
+
+
 adb('shell', 'rm', '-f', '/sdcard/Download/*.csv', check=False)
 adb('shell', 'am', 'start', '-W', '-n', APP + '/.MainActivity')
 
 # 1. Log a short session so there is something to export.
-tap(r'Start session', timeout=120)
+press('btnMain', 'Start session')
 time.sleep(6)
 shot('session-running')
-tap(r'End and log', scroll=True)
+press('btnEnd', 'End and log')
 time.sleep(2)
 
 # 2. Export.
-tap(r'Export CSV', scroll=True)
+press('btnExport', 'Export CSV')
 time.sleep(4)
 shot('save-as-screen')
 
-# 3. Android's "save as" screen: press its Save button.
+# 3. Android's "save as" screen: find its Save button on screen and tap it.
 tap(r'Save', timeout=60)
 time.sleep(5)
-shot('after-save')
 
 # 4. The page should say it saved, and the file should exist in Downloads.
-msg = find(r'Saved .*\.csv with 1 session\.', timeout=30, scroll=True)
-if not msg:
-    fail('the page did not report "Saved ... with 1 session."')
-print('page says:', msg[0], flush=True)
-shot('saved-message')
+said = None
+for _ in range(15):
+    said = page("document.getElementById('exportMsg').textContent")
+    if said:
+        break
+    time.sleep(2)
+page("document.getElementById('exportMsg').scrollIntoView({block:'center'})")
+time.sleep(1)
+shot('after-save')
+print('page says: %r' % said, flush=True)
+if not re.fullmatch(r'Saved .*\.csv with 1 session\.', said or ''):
+    fail('the page should say "Saved ... with 1 session."')
 
 listing = adb('shell', 'ls', '/sdcard/Download/', check=False)
 csvs = [l.strip() for l in listing.splitlines() if l.strip().endswith('.csv')]
