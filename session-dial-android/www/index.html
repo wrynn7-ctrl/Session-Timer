@@ -252,6 +252,11 @@ button, input { font: inherit; color: inherit; }
   padding: 9px 0; border-bottom: 1px solid var(--line);
   font-size: 14px; font-variant-numeric: tabular-nums;
 }
+.log-list li.day {
+  display: block; padding: 16px 0 6px;
+  font-size: 12px; font-weight: 600; color: var(--muted);
+}
+.log-list li.day:first-child { padding-top: 4px; }
 .log-list .when { color: var(--muted); min-width: 0; }
 .log-list .dur { font-weight: 600; }
 .log-list .code { color: var(--accent-ink); font-size: 13px; }
@@ -362,8 +367,16 @@ button, input { font: inherit; color: inherit; }
 
       <section class="group">
         <div class="group-head">
-          <h2 class="label">Today</h2>
+          <h2 class="label">Sessions</h2>
           <span class="log-sum" id="logSum"></span>
+        </div>
+        <div class="chips" role="group" aria-label="Which sessions to list">
+          <button type="button" class="chip" id="viewToday" aria-pressed="true">Today</button>
+          <button type="button" class="chip" id="viewRange" aria-pressed="false">Date range</button>
+        </div>
+        <div class="range" id="viewDates" hidden>
+          <label for="viewFrom">From <input type="date" id="viewFrom"></label>
+          <label for="viewTo">To <input type="date" id="viewTo"></label>
         </div>
         <p class="log-empty" id="logEmpty">Sessions you end will be listed here with their start, finish and length.</p>
         <ul class="log-list" id="logList"></ul>
@@ -371,7 +384,7 @@ button, input { font: inherit; color: inherit; }
           <button type="button" class="btn" id="btnCopy">Copy list</button>
           <button type="button" class="btn ghost" id="btnClear">Clear today</button>
         </div>
-        <textarea id="copyFallback" readonly hidden aria-label="Today's sessions as text"></textarea>
+        <textarea id="copyFallback" readonly hidden aria-label="The listed sessions as text"></textarea>
       </section>
 
       <section class="group">
@@ -439,11 +452,17 @@ button, input { font: inherit; color: inherit; }
   const widgetBox = $('widgetBox'), btnWidget = $('btnWidget');
   const logList = $('logList'), logEmpty = $('logEmpty'), logSum = $('logSum'), logTools = $('logTools');
   const btnCopy = $('btnCopy'), btnClear = $('btnClear'), copyFallback = $('copyFallback');
+  const viewToday = $('viewToday'), viewRange = $('viewRange'), viewDates = $('viewDates');
+  const viewFrom = $('viewFrom'), viewTo = $('viewTo');
+  const EMPTY_TODAY = logEmpty.textContent;
   const histSum = $('histSum'), expFrom = $('expFrom'), expTo = $('expTo');
   const btnExport = $('btnExport'), btnWipe = $('btnWipe'), exportMsg = $('exportMsg'), csvFallback = $('csvFallback');
 
   let booted = false, exportMode = 'save';
   const rangeTouched = { from: false, to: false };
+  /* the session list shows today, or the dates chosen under "Date range" */
+  let logView = 'today';
+  const viewTouched = { from: false, to: false };
   let state, log = [];
   let lastDigits = '', lastPhase = '', lastMinute = -1, scaleKey = '';
 
@@ -858,10 +877,51 @@ button, input { font: inherit; color: inherit; }
     store.set(LS_LOG, log);
     renderLog();
   }
+  function orderedRange(a, b) {
+    const todayKey = dayKey(Date.now());
+    let from = a.value || todayKey, to = b.value || todayKey;
+    if (from > to) { const t = from; from = to; to = t; }
+    return { from, to };
+  }
+  /* the sessions the list is showing: today's, or those in the chosen dates, oldest first */
+  function shownSessions() {
+    if (logView === 'today') return log.filter(e => isToday(e.start));
+    const { from, to } = orderedRange(viewFrom, viewTo);
+    return log.filter(e => { const k = dayKey(e.start); return k >= from && k <= to; })
+      .sort((a, b) => a.start - b.start);
+  }
+  const sessionCount = n => n + (n === 1 ? ' session' : ' sessions');
+  const dayTitle = ts => {
+    const d = new Date(ts), opts = { weekday: 'short', month: 'short', day: 'numeric' };
+    if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+    return d.toLocaleDateString([], opts);
+  };
+  function setLogView(view) {
+    logView = view;
+    viewToday.setAttribute('aria-pressed', String(view === 'today'));
+    viewRange.setAttribute('aria-pressed', String(view === 'range'));
+    viewDates.hidden = view !== 'range';
+    disarm(btnClear);
+    copyFallback.hidden = true;
+    renderLog();
+  }
   function renderLog() {
-    const today = log.filter(e => isToday(e.start));
+    /* until the user picks dates, the range is the last seven days */
+    if (!viewTouched.to) viewTo.value = dayKey(Date.now());
+    if (!viewTouched.from) viewFrom.value = dayKey(Date.now() - 6 * 86400000);
+    const ranged = logView === 'range';
+    const shown = shownSessions();
     logList.textContent = '';
-    today.forEach(e => {
+    let lastDay = '';
+    shown.forEach(e => {
+      if (ranged && dayKey(e.start) !== lastDay) {
+        lastDay = dayKey(e.start);
+        const ofDay = shown.filter(x => dayKey(x.start) === lastDay);
+        const head = document.createElement('li'); head.className = 'day';
+        head.textContent = dayTitle(e.start) + ' · ' + sessionCount(ofDay.length) + ' · ' +
+          fmtTotal(ofDay.reduce((a, x) => a + x.ms, 0));
+        logList.appendChild(head);
+      }
       const li = document.createElement('li');
       const when = document.createElement('span'); when.className = 'when';
       when.textContent = fmtClock(e.start) + ' – ' + fmtClock(e.end);
@@ -871,7 +931,8 @@ button, input { font: inherit; color: inherit; }
       code.textContent = state.showCpt ? (cptFor(e.ms) || 'under 16') : '';
       const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'rm';
       rm.textContent = '×';
-      rm.setAttribute('aria-label', 'Remove the session that ended at ' + fmtClock(e.end));
+      rm.setAttribute('aria-label', 'Remove the session that ended at ' + fmtClock(e.end) +
+        (ranged ? ' on ' + dayTitle(e.start) : ''));
       rm.addEventListener('click', () => {
         const i = log.indexOf(e);
         if (i > -1) log.splice(i, 1);
@@ -880,11 +941,13 @@ button, input { font: inherit; color: inherit; }
       li.append(when, dur, code, rm);
       logList.appendChild(li);
     });
-    logEmpty.hidden = today.length > 0;
-    logTools.hidden = today.length === 0;
-    if (!today.length) copyFallback.hidden = true;
-    const total = today.reduce((a, e) => a + e.ms, 0);
-    logSum.textContent = today.length ? today.length + (today.length === 1 ? ' session · ' : ' sessions · ') + fmtTotal(total) : '';
+    logEmpty.textContent = ranged ? 'No sessions were logged between those dates.' : EMPTY_TODAY;
+    logEmpty.hidden = shown.length > 0;
+    logTools.hidden = shown.length === 0;
+    btnClear.hidden = ranged;
+    if (!shown.length) copyFallback.hidden = true;
+    const total = shown.reduce((a, e) => a + e.ms, 0);
+    logSum.textContent = shown.length ? sessionCount(shown.length) + ' · ' + fmtTotal(total) : '';
 
     const todayKey = dayKey(Date.now());
     if (log.length) {
@@ -900,12 +963,25 @@ button, input { font: inherit; color: inherit; }
     btnWipe.hidden = log.length === 0;
   }
   function logText() {
-    const head = new Date().toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    const rows = log.filter(e => isToday(e.start)).map(e => {
+    const longDate = ts => new Date(ts).toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const row = e => {
       const code = state.showCpt ? '  ' + (cptFor(e.ms) || 'under 16 min') : '';
       return fmtClock(e.start) + ' – ' + fmtClock(e.end) + '  ' + fmtMS(Math.floor(e.ms / 1000)) + code;
+    };
+    const shown = shownSessions();
+    if (logView === 'today') return [longDate(Date.now())].concat(shown.map(row)).join('\n');
+    /* a date range: one heading per day, with a blank line between days */
+    const lines = [];
+    let lastDay = '';
+    shown.forEach(e => {
+      if (dayKey(e.start) !== lastDay) {
+        lastDay = dayKey(e.start);
+        if (lines.length) lines.push('');
+        lines.push(longDate(e.start));
+      }
+      lines.push(row(e));
     });
-    return [head].concat(rows).join('\n');
+    return lines.join('\n');
   }
   function copyLog() {
     const text = logText();
@@ -924,12 +1000,7 @@ button, input { font: inherit; color: inherit; }
 
   /* ---------- CSV export ---------- */
   function setExportMsg(text) { exportMsg.textContent = text; exportMsg.hidden = !text; }
-  function exportRange() {
-    const todayKey = dayKey(Date.now());
-    let from = expFrom.value || todayKey, to = expTo.value || todayKey;
-    if (from > to) { const t = from; from = to; to = t; }
-    return { from, to };
-  }
+  function exportRange() { return orderedRange(expFrom, expTo); }
   function buildCsv(rows) {
     const head = ['Date', 'Start', 'End', 'Length (h:mm:ss)', 'Minutes', 'Planned minutes'];
     if (state.showCpt) head.push('CPT code');
@@ -1035,6 +1106,10 @@ button, input { font: inherit; color: inherit; }
       log = log.filter(e => !isToday(e.start));
       saveLog();
     }));
+    viewToday.addEventListener('click', () => setLogView('today'));
+    viewRange.addEventListener('click', () => setLogView('range'));
+    viewFrom.addEventListener('change', () => { viewTouched.from = true; renderLog(); });
+    viewTo.addEventListener('change', () => { viewTouched.to = true; renderLog(); });
     btnExport.addEventListener('click', exportCsv);
     btnWipe.addEventListener('click', () => twoTap(btnWipe, 'Tap again to delete all', () => {
       log = [];

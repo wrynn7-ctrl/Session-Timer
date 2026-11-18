@@ -158,8 +158,10 @@ Four groups:
    the "Other" number box (`customMin`).
 2. **Wind-down**: the `cueChips` box, then the three switches (`optChime`, `optCpt`, `optAwake`).
    `chimeNotice` is a hidden warning line with the "Allow exact timing" button (`btnExact`).
-3. **Today**: the total (`logSum`), the list (`logList`), "Copy list" and "Clear today", and a
-   hidden text box (`copyFallback`) used if copying to the clipboard is blocked.
+3. **Sessions**: the total (`logSum`), two chips that choose what the list shows (`viewToday`
+   and `viewRange`), a pair of date boxes that appear for "Date range" (`viewFrom`, `viewTo`
+   inside `viewDates`), the list (`logList`), "Copy list" and "Clear today", and a hidden text
+   box (`copyFallback`) used if copying to the clipboard is blocked.
 4. **Export**: the two date boxes (`expFrom`, `expTo`), "Export CSV" (`btnExport`), "Delete all"
    (`btnWipe`), a message line (`exportMsg`) and another fallback text box (`csvFallback`).
 
@@ -227,6 +229,8 @@ A block of `const dial = $('dial')` lines. `$` is short for `document.getElement
 - `exportMode` is `'save'` normally and `'copy'` once saving has failed.
 - `rangeTouched` remembers whether the user changed an export date by hand, so the code stops
   overwriting it.
+- `logView` is `'today'` or `'range'`: which sessions the list shows. `viewTouched` does for the
+  list's two date boxes what `rangeTouched` does for export's.
 - `lastDigits`, `lastPhase`, `lastMinute`, `scaleKey` remember what was last drawn, so the page
   is only touched when something changed.
 
@@ -382,19 +386,35 @@ and `widgetAction()`, which carries out a tap on the widget's button, are explai
 ### The log (search for `---------- log`)
 
 - **`saveLog()`** keeps at most the newest 5,000 sessions, stores them and redraws.
-- **`renderLog()`** has two halves:
-  - *Today's list*: one row per session with start and end times, length, CPT code and a remove
-    button, plus the count and total above.
-  - *Export summary*: "N sessions since *date*", and default dates for the export boxes (first
+- **`orderedRange(a, b)`** reads two date boxes and swaps the dates if they are the wrong way
+  round. The session list and export both use it.
+- **`shownSessions()`** returns the sessions the list is showing. In "Today" view that is
+  today's. In "Date range" view it is every session from the first chosen day to the last,
+  oldest first.
+- **`sessionCount(n)`** writes "1 session" or "3 sessions". **`dayTitle(ts)`** writes a short
+  date such as "Sun, Nov 15", adding the year when it is not the current one.
+- **`setLogView(view)`** runs when a chip is tapped. It records the choice, marks the chip,
+  shows or hides the date boxes and redraws the list.
+- **`renderLog()`** has three parts:
+  - *Default dates.* Until the user picks dates, the range is the last seven days, ending today.
+  - *The list.* One row per session with start and end times, length, CPT code and a remove
+    button. In "Date range" view each day starts with a heading giving the date, the number of
+    sessions and the total time for that day. The line above the list gives the count and total
+    for everything shown. "Clear today" is hidden in "Date range" view, since it only clears
+    today.
+  - *Export summary.* "N sessions since *date*", and default dates for the export boxes (first
     logged day to today) unless the user has set them by hand.
-- **`logText()`** builds today's list as plain text.
+- **`logText()`** builds the listed sessions as plain text. For a date range it writes a
+  heading for each day with a blank line between days.
 - **`copyLog()`** puts that text on the clipboard. If the clipboard is blocked, it shows the text
   in a box to copy by hand.
+
+The view choice is not saved. The list goes back to "Today" each time the app starts.
 
 ### CSV export (search for `---------- CSV export`)
 
 - **`setExportMsg(text)`** shows or hides the message line under the button.
-- **`exportRange()`** reads the two dates and swaps them if they are the wrong way round.
+- **`exportRange()`** reads the two export dates through `orderedRange()`.
 - **`buildCsv(rows)`** turns sessions into CSV text: a header row, then one row per session with
   date, start, end, length, whole minutes, planned minutes and, if CPT is shown, the code. Any
   value containing a comma, quote or line break is wrapped in quotes.
@@ -419,6 +439,8 @@ and `widgetAction()`, which carries out a tap on the widget's button, are explai
   Discard, Clear today and Delete all go through `twoTap`.
 - The length and wind-down chips share one click handler per group, which reads the value from
   the chip that was tapped.
+- **Today and Date range chips** call `setLogView`. Changing either of the list's date boxes
+  redraws the list.
 - **Chime switch**: plays a sample bell in a browser. In the app it checks permissions first,
   asking if needed, and then commits.
 - **Allow exact timing**: opens Android's settings page for exact alarms, then re-checks.
