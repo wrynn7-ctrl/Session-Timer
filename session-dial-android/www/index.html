@@ -355,6 +355,9 @@ button, input { font: inherit; color: inherit; }
         </div>
         <label class="switch"><span>Show CPT time range</span><input type="checkbox" id="optCpt"><span class="knob"></span></label>
         <label class="switch"><span>Keep the screen on while timing</span><input type="checkbox" id="optAwake"><span class="knob"></span></label>
+        <div class="notice" id="widgetBox" hidden>
+          <button type="button" class="btn" id="btnWidget">Add the home screen widget</button>
+        </div>
       </section>
 
       <section class="group">
@@ -413,6 +416,7 @@ button, input { font: inherit; color: inherit; }
   const Sharing = nativePlugin('Share');
   const Saver = nativePlugin('SaveFile');
   const Awake = nativePlugin('KeepAwake');
+  const Widget = nativePlugin('WidgetBridge');
   const NOTE = { wind: 101, end: 102 };
   const CHANNEL = { wind: 'wind-down-v1', end: 'session-end-v1' };
 
@@ -432,6 +436,7 @@ button, input { font: inherit; color: inherit; }
   const lenChips = $('lenChips'), cueChips = $('cueChips'), customMin = $('customMin');
   const optChime = $('optChime'), optCpt = $('optCpt'), optAwake = $('optAwake');
   const chimeNotice = $('chimeNotice'), chimeMsg = $('chimeMsg'), btnExact = $('btnExact');
+  const widgetBox = $('widgetBox'), btnWidget = $('btnWidget');
   const logList = $('logList'), logEmpty = $('logEmpty'), logSum = $('logSum'), logTools = $('logTools');
   const btnCopy = $('btnCopy'), btnClear = $('btnClear'), copyFallback = $('copyFallback');
   const histSum = $('histSum'), expFrom = $('expFrom'), expTo = $('expTo');
@@ -775,7 +780,22 @@ button, input { font: inherit; color: inherit; }
   }
 
   /* ---------- actions ---------- */
-  function commit() { save(); syncControls(); scheduleChimes(); render(); }
+  function commit() { save(); syncControls(); scheduleChimes(); pushWidget(); render(); }
+
+  /* ---------- home screen widget (Android app only) ----------
+     The widget cannot see this page, so every change is sent to it. Its button opens the app and
+     says which button it was; widgetAction() then does what the matching button here would do. */
+  function pushWidget() {
+    if (!Widget) return;
+    Widget.update({
+      status: state.status, runStart: state.runStart || 0,
+      accumulated: Math.round(state.accumulated), targetMin: state.targetMin
+    }).catch(() => {});
+  }
+  function widgetAction(action) {
+    if (action === 'start' && state.status !== 'running') toggleMain();
+    else if (action === 'end' && state.status !== 'idle') endSession();
+  }
 
   function toggleMain() {
     const now = Date.now();
@@ -1054,6 +1074,7 @@ button, input { font: inherit; color: inherit; }
       if (state.keepAwake) holdWake(); else dropWake();
     });
     optCpt.addEventListener('change', () => { state.showCpt = optCpt.checked; commit(); renderLog(); });
+    btnWidget.addEventListener('click', () => { Widget.requestPin().catch(() => {}); });
 
     document.addEventListener('keydown', e => {
       if (e.code !== 'Space' || e.repeat) return;
@@ -1109,6 +1130,12 @@ button, input { font: inherit; color: inherit; }
     holdWake();
     /* If Android restarted the app mid-session, put the chimes back on its schedule. */
     if (Notif) { scheduleChimes(); if (state.chime) checkNativeChime(false); }
+    if (Widget) {
+      pushWidget();
+      Widget.canPin().then(r => { widgetBox.hidden = !(r && r.value); }).catch(() => {});
+      Widget.addListener('widgetAction', e => widgetAction(e && e.action));
+      Widget.takeAction().then(r => widgetAction(r && r.action)).catch(() => {});
+    }
     setInterval(render, 250);
   }
 

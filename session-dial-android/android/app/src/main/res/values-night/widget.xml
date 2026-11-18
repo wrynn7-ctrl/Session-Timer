@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark-mode colours for the home screen widget. -->
+<resources>
+    <color name="widget_surface">#211727</color>
+    <color name="widget_ink">#F0E8EE</color>
+    <color name="widget_muted">#A797AC</color>
+    <color name="widget_button_bg">#E38D58</color>
+    <color name="widget_button_text">#1C1110</color>
+</resources>

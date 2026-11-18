@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The home screen widget: status and running time on the left, one button on the right.
+     Widgets may only use a small set of basic views, which is why this is plain. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="16dp"
+    android:paddingTop="6dp"
+    android:paddingEnd="10dp"
+    android:paddingBottom="6dp">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/widget_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="@string/widget_preview_status"
+            android:textAllCaps="true"
+            android:textColor="@color/widget_muted"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <Chronometer
+            android:id="@+id/widget_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="serif"
+            android:textColor="@color/widget_ink"
+            android:textSize="26sp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:background="@drawable/widget_button"
+        android:maxLines="1"
+        android:paddingStart="16dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="10dp"
+        android:text="@string/widget_start"
+        android:textColor="@color/widget_button_text"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+</LinearLayout>

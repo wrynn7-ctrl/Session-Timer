@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Text and light-mode colours for the home screen widget. The colours match www/index.html. -->
+<resources>
+    <string name="widget_description">Start and end sessions from the home screen</string>
+    <string name="widget_ready">Ready · %1$d min</string>
+    <string name="widget_running">In session · %1$d min</string>
+    <string name="widget_paused">Paused · %1$d min</string>
+    <string name="widget_preview_status">Ready · 53 min</string>
+    <string name="widget_start">Start session</string>
+    <string name="widget_end">End and log</string>
+
+    <color name="widget_surface">#F6F4F8</color>
+    <color name="widget_ink">#2B1A30</color>
+    <color name="widget_muted">#6C5E72</color>
+    <color name="widget_button_bg">#2B1A30</color>
+    <color name="widget_button_text">#F6F4F8</color>
+</resources>

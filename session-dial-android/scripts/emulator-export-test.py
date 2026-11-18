@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Drives the installed app on a running emulator to check Export CSV end to end.
+"""Drives the installed app on a running emulator to check Export CSV and the home screen widget.
 
-Logs a short session, presses Export CSV, saves through Android's real "save as" screen, then
-checks the CSV landed in Downloads. Screenshots of each step and the saved file go into the output
-folder.
+Part 1 logs a short session, presses Export CSV, saves through Android's real "save as" screen,
+then checks the CSV landed in Downloads. Part 2 adds the widget to the home screen, starts a
+session from it with the app closed, ends the session from it, and checks the log. Screenshots of
+each step and the saved file go into the output folder.
 
 The app's own buttons are pressed through the WebView's debugging connection (debug builds only),
 because Android's screen reader cannot read the page while the timer is ticking. The "save as"
-screen belongs to Android, so there the script finds the Save button on screen and taps it.
+screen, the launcher's prompt and the widget belong to Android, so there the script finds the
+button on screen and taps it.
 
 Usage: python3 scripts/emulator-export-test.py <output-folder>
 """
@@ -149,20 +151,25 @@ def page(expression):
         sock.close()
 
 
-def press(button_id, expect):
-    """Press one of the app's buttons, after checking it shows the expected label."""
+def wait_label(button_id, expect, timeout=60):
+    """Wait until one of the app's buttons is visible and shows the expected label."""
     label = None
-    for _ in range(30):
+    end = time.time() + timeout
+    while time.time() < end:
         try:
             label = page("(function(){var b=document.getElementById('%s');"
                          "return b&&!b.hidden&&!b.disabled?b.textContent.trim():null})()" % button_id)
         except Exception as e:
             label = 'not ready: %s' % e
         if label == expect:
-            break
+            return
         time.sleep(2)
-    else:
-        fail('expected a %r button (#%s), found %r' % (expect, button_id, label))
+    fail('expected a %r button (#%s), found %r' % (expect, button_id, label))
+
+
+def press(button_id, expect):
+    """Press one of the app's buttons, after checking it shows the expected label."""
+    wait_label(button_id, expect)
     page("(function(){var b=document.getElementById('%s');b.scrollIntoView({block:'center'});b.click()})()" % button_id)
     print('pressed %r' % expect, flush=True)
 
@@ -215,3 +222,55 @@ print(content)
 if len(lines) != 2 or not lines[0].startswith('Date,Start,End'):
     fail('the CSV should be a header plus one session, got %d lines' % len(lines))
 print('PASSED: Export CSV saved %s through the save-as screen.' % csvs[0])
+
+
+# ---------- Part 2: the home screen widget ----------
+# 5. Ask the launcher to add the widget, and accept its prompt.
+press('btnWidget', 'Add the home screen widget')
+time.sleep(3)
+shot('add-widget-prompt')
+tap(r'Add( to home screen| automatically)?', timeout=40)
+time.sleep(3)
+
+# 6. Go to the home screen and close the app, so the widget has to start it from nothing.
+adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+time.sleep(3)
+adb('shell', 'am', 'kill', APP)
+time.sleep(2)
+print('app process after closing: %r' % adb('shell', 'pidof', APP, check=False).strip(), flush=True)
+shot('home-with-widget')
+hit = find(r'Start session', timeout=40)
+if not hit:
+    fail('the widget\'s "Start session" button is not on the home screen')
+_, _, bx, by = hit
+print('widget button at %d,%d' % (bx, by), flush=True)
+
+# 7. Start a session from the widget. The app should open with the timer running.
+adb('shell', 'input', 'tap', str(bx), str(by))
+wait_label('btnMain', 'Pause')
+print('widget started a session', flush=True)
+shot('started-from-widget')
+time.sleep(5)
+
+# 8. Back to the home screen: the same button should now end the session.
+adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+time.sleep(3)
+shot('widget-while-running')
+# Android's screen reader may not answer while the widget's clock is ticking, so fall back to
+# the button's known position.
+end_hit = find(r'End and log', timeout=12)
+print('widget shows "End and log": %s' % ('yes' if end_hit else 'could not be read'), flush=True)
+if end_hit:
+    bx, by = end_hit[2], end_hit[3]
+adb('shell', 'input', 'tap', str(bx), str(by))
+wait_label('btnMain', 'Start session')
+count = page("JSON.parse(localStorage.getItem('session-dial:log:v1')).length")
+shot('ended-from-widget')
+if count != 2:
+    fail('the log should hold 2 sessions after ending from the widget, it holds %r' % count)
+adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+time.sleep(3)
+shot('widget-after-end')
+if not find(r'Start session', timeout=30):
+    fail('the widget should read "Start session" again after the session ended')
+print('PASSED: the widget started and ended a session, and the log now holds 2 sessions.')
