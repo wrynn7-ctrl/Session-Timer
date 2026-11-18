@@ -83,6 +83,13 @@ def fail(message):
     with open(os.path.join(OUT, 'screen-at-failure.txt'), 'w') as f:
         f.write(listing)
     print('Text on screen at failure (screen is %dx%d):\n%s' % (W, H, listing), flush=True)
+    try:
+        print('Page at failure: %s' % page(
+            "'clock=' + JSON.stringify(document.getElementById('nowTime').textContent) + "
+            "' main=' + JSON.stringify(document.getElementById('btnMain').textContent) + "
+            "' state=' + localStorage.getItem('session-dial:state:v1')"), flush=True)
+    except Exception as e:
+        print('Page could not be reached: %s' % e, flush=True)
     print('FAILED:', message, flush=True)
     sys.exit(1)
 
@@ -157,7 +164,10 @@ def wait_label(button_id, expect, timeout=60):
     end = time.time() + timeout
     while time.time() < end:
         try:
+            # The header clock is filled in by the last step of the page's start-up, so an empty
+            # one means the buttons are not wired up yet.
             label = page("(function(){var b=document.getElementById('%s');"
+                         "if(!document.getElementById('nowTime').textContent)return 'page still starting';"
                          "return b&&!b.hidden&&!b.disabled?b.textContent.trim():null})()" % button_id)
         except Exception as e:
             label = 'not ready: %s' % e
