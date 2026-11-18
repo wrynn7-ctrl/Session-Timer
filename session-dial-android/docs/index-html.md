@@ -197,6 +197,7 @@ const Files = nativePlugin('Filesystem');
 const Sharing = nativePlugin('Share');
 const Saver = nativePlugin('SaveFile');
 const Awake = nativePlugin('KeepAwake');
+const Widget = nativePlugin('WidgetBridge');
 ```
 
 `isNative` is true only inside the Android app. Each plugin variable is either a working object
@@ -355,11 +356,16 @@ main button's label, whether End and Discard are visible. It ends by calling `bu
 ### Actions (search for `---------- actions`)
 
 ```js
-function commit() { save(); syncControls(); scheduleChimes(); render(); }
+function commit() { save(); syncControls(); scheduleChimes(); pushWidget(); render(); }
 ```
 
-Called after every change: save, update the controls, reschedule the chimes, redraw. Because
+Called after every change: save, update the controls, reschedule the chimes, tell the widget,
+redraw. Because
 everything goes through it, the chimes are always scheduled from the current settings.
+
+`commit()` also calls `pushWidget()`, which sends the new state to the home screen widget. That
+and `widgetAction()`, which carries out a tap on the widget's button, are explained in
+[widget.md](widget.md).
 
 - **`toggleMain()`** is Start, Pause and Resume in one. Pausing banks the elapsed time and clears
   `runStart`. Starting or resuming records a new `runStart`; a fresh start also records
@@ -438,5 +444,6 @@ everything goes through it, the chimes are always scheduled from the current set
 4. **Load the log**, dropping malformed entries.
 5. **Build and draw**: chips, wiring, controls, log, dial.
 6. **In the app**, put the chimes back on Android's schedule, in case Android restarted the app
-   during a session.
+   during a session. Also send the state to the widget and ask whether a widget tap opened the
+   app.
 7. **Start the clock**: `setInterval(render, 250)` redraws four times a second from then on.

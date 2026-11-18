@@ -98,6 +98,10 @@ notification vibrates but makes no sound.
   `mmddyy - mmddyy.csv`. The code for that screen is `SaveFilePlugin.java`, next to `MainActivity.java`.
 - **Keep the screen on while timing** is a new switch. It only stops the phone dimming by itself;
   you can still lock it by hand and the chimes will sound.
+- **Home screen widget.** It shows the session time and one button, **Start session** or **End and
+  log**. Tapping the button opens the app and does that action there. Add it with the **Add the
+  home screen widget** button under the switches, or by long-pressing the home screen and choosing
+  Widgets.
 - The session log lives inside the app on this phone. It does not carry over from the web page.
 
 ## If you change something later

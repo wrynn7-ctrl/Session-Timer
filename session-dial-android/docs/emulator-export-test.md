@@ -144,8 +144,35 @@ Then it checks three things about the file itself:
 
 The file is also copied into the output folder. If everything holds, the script prints `PASSED`.
 
+## Part 2: the home screen widget
+
+After the export check passes, the same run tests the widget.
+
+**5. Add the widget.** `press('btnWidget', ...)` presses the app's "Add the home screen widget"
+button, and `tap(r'Add( to home screen| automatically)?')` accepts the launcher's prompt. The
+pattern covers the different wordings launchers use.
+
+**6. Go home and close the app.** The HOME key shows the home screen, and `am kill` asks Android
+to close the app's process, so the next tap has to start the app from nothing. The script then
+finds "Start session" on the home screen, which proves the widget is there and drawn, and
+remembers where the button is.
+
+**7. Start from the widget.** It taps the button and waits for the app's main button to read
+"Pause", which only happens once a session is running.
+
+**8. End from the widget.** Back on the home screen it taps the same button, now "End and log".
+Android's screen reader often cannot answer while the widget's clock is ticking, so the script
+falls back to the remembered position. It then waits for the app's main button to read "Start
+session" again and checks that the log holds two sessions: the one from the export check and this
+one. Last, it checks the widget reads "Start session" again.
+
+`wait_label()` is the helper behind those waits: it polls one of the app's buttons until it is
+visible with the expected label.
+
 ## What it does not check
 
 - Choosing a different folder or renaming the file in the picker. It saves to wherever the
   picker opens.
 - The chimes. Those need a real phone with the screen off.
+- How the widget looks. The screenshots attached to the run show it; the script only checks its
+  text and that its button works.

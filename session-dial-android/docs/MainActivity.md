@@ -25,6 +25,7 @@ free.
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(SaveFilePlugin.class);
+        registerPlugin(WidgetBridgePlugin.class);
         super.onCreate(savedInstanceState);
     }
 ```
@@ -34,7 +35,9 @@ free.
 - `registerPlugin(SaveFilePlugin.class)` tells the bridge that a plugin named `SaveFile` exists
   (see [SaveFilePlugin.md](SaveFilePlugin.md)). Without this line the page's call to
   `Saver.save(...)` would fail with "plugin not implemented".
-- It must come **before** `super.onCreate(...)`, because that call is what starts the bridge, and
+- `registerPlugin(WidgetBridgePlugin.class)` does the same for the `WidgetBridge` plugin, which
+  links the page to the home screen widget (see [widget.md](widget.md)).
+- Both must come **before** `super.onCreate(...)`, because that call is what starts the bridge, and
   the bridge only picks up plugins registered before it starts.
 
 The four plugins installed through npm (notifications, filesystem, share, keep-awake) are not

@@ -14,6 +14,7 @@ test that one page.
 | [SaveFilePlugin.md](SaveFilePlugin.md) | `android/app/src/main/java/com/sessiondial/app/SaveFilePlugin.java` | Opens Android's "save as" screen for Export CSV. |
 | [MainActivity.md](MainActivity.md) | `android/app/src/main/java/com/sessiondial/app/MainActivity.java` | The app's entry point on Android. |
 | [AndroidManifest.md](AndroidManifest.md) | `android/app/src/main/AndroidManifest.xml` | What the app is and which permissions it asks for. |
+| [widget.md](widget.md) | `SessionWidgetProvider.java`, `WidgetBridgePlugin.java` and the widget's layout files | The home screen widget that starts and ends sessions. |
 | [icon.md](icon.md) | The launcher icon files under `android/app/src/main/res/` | The dial icon, in the forms different Android versions need. |
 | [capacitor-config.md](capacitor-config.md) | `capacitor.config.ts` | App name, app ID and where the web page lives. |
 
@@ -31,7 +32,7 @@ test that one page.
 |---|---|---|
 | [build-apk-workflow.md](build-apk-workflow.md) | `.github/workflows/build-apk.yml` (repo root) | Builds the APK on GitHub on every push. |
 | [emulator-export-test-workflow.md](emulator-export-test-workflow.md) | `.github/workflows/emulator-export-test.yml` (repo root) | Boots an emulator on GitHub and runs the export test. |
-| [emulator-export-test.md](emulator-export-test.md) | `scripts/emulator-export-test.py` | The test itself: logs a session, exports, checks the file. |
+| [emulator-export-test.md](emulator-export-test.md) | `scripts/emulator-export-test.py` | The test itself: checks export, then adds the widget and starts and ends a session from it. |
 
 ## Files with no document of their own
 

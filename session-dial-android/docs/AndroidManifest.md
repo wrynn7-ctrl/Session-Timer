@@ -50,6 +50,11 @@ permissions at the bottom are specific to Session Dial.
   page.
 - `exported="true"` is required for any screen the launcher can open.
 
+## The home screen widget
+
+A `<receiver>` block for `.SessionWidgetProvider` announces the widget to Android. It is
+explained in [widget.md](widget.md).
+
 ## The file provider
 
 ```xml
